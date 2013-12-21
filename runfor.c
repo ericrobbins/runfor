@@ -29,6 +29,7 @@ child_exit(int sig)
 		else
 			exit(127); // this should never happen
 	}
+//printf("returning from child_exit()\n");
 	return;
 }
 
@@ -42,21 +43,37 @@ main(int argc, char **argv)
 	if (sleeptime <= 0.0)
 		fail2(127, "sleep time must be > 0\n");
 
-	signal(SIGCHLD, child_exit);
-
 	int newpid = fork();
 	if (newpid > 0)
 	{
-		fd_set fds;
-		struct timeval tv;
+		signal(SIGCHLD, child_exit);
 	
 		childpid = newpid;
 
-		tv.tv_sec = sleeptime;
-		tv.tv_usec = (int)((sleeptime - (double)tv.tv_sec) * 1000000.0);
+		int loop = 1;
+		while (loop)
+		{
+			int rval; 
+			struct timeval tv, now;
+			double start, end;
 
-		FD_ZERO(&fds);
-		select(0, NULL, NULL, NULL, &tv);
+			tv.tv_sec = sleeptime;
+			tv.tv_usec = (int)((sleeptime - (double)tv.tv_sec) * 1000000.0);
+
+			gettimeofday(&now, NULL);
+			start = now.tv_sec + ((double)now.tv_usec / 1000000.0);  
+
+			rval = select(0, NULL, NULL, NULL, &tv);
+			if (rval == -1 && errno == EINTR)
+			{
+				gettimeofday(&now, NULL);
+				end = now.tv_sec + ((double)now.tv_usec / 1000000.0);  
+				sleeptime -= (end - start);
+//printf("select interrupted, elapsed %.2f, sleeptime now %.2f\n", end - start, sleeptime);
+			}
+			else 
+				loop = 0;
+		}
 
 		kill(SIGTERM, childpid);
 		if (kill(0, childpid) == 0)
